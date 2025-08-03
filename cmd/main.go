@@ -8,11 +8,12 @@ import (
 
 	"cloudpact/parser/grammar"
 	"cloudpact/spec/openapi"
+	"cloudpact/tsgen"
 )
 
 func main() {
 	if len(os.Args) < 3 {
-		fmt.Println("Usage: cloudpact gen model <ModelName>\n       cloudpact gen openapi <file.cf>")
+		fmt.Println("Usage: cloudpact gen model <ModelName>\n       cloudpact gen openapi <file.cf>\n       cloudpact gen ts <spec.yaml>")
 		return
 	}
 
@@ -34,6 +35,15 @@ func main() {
 		}
 		cf := os.Args[3]
 		if err := generateOpenAPI(cf); err != nil {
+			fmt.Println("error:", err)
+		}
+	case cmd == "gen" && sub == "ts":
+		if len(os.Args) < 4 {
+			fmt.Println("missing OpenAPI spec file")
+			return
+		}
+		spec := os.Args[3]
+		if err := tsgen.Generate(spec); err != nil {
 			fmt.Println("error:", err)
 		}
 	default:
