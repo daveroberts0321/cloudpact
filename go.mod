@@ -1,4 +1,4 @@
-module cloudpact
+module github.com/daveroberts0321/cloudpact
 
 go 1.24.3
 
