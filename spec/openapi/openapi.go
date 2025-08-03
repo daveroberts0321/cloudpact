@@ -103,25 +103,40 @@ func GenerateWithConfig(file *grammar.File, config *APIConfig) (string, error) {
 	schemas := doc["components"].(map[string]interface{})["schemas"].(map[string]interface{})
 	paths := doc["paths"].(map[string]interface{})
 
+	// Collect schema names for $ref lookups
+	schemaNames := make(map[string]struct{})
+	for _, m := range file.Models {
+		schemaNames[m.Name] = struct{}{}
+	}
+	for _, r := range file.Records {
+		schemaNames[r.Name] = struct{}{}
+	}
+
 	// Generate schemas for models
 	for _, m := range file.Models {
-		schema := generateModelSchema(m)
+		schema := generateModelSchema(m, schemaNames)
 		schemas[m.Name] = schema
 
 		// Generate basic CRUD paths for each model
 		generateModelPaths(paths, m)
 	}
 
-	// TODO: Generate paths for functions when function parsing is implemented
-	// for _, f := range file.Functions {
-	//     generateFunctionPath(paths, f)
-	// }
+	// Generate schemas for records
+	for _, r := range file.Records {
+		schema := generateRecordSchema(r, schemaNames)
+		schemas[r.Name] = schema
+	}
+
+	// Generate paths for functions
+	for _, f := range file.Functions {
+		generateFunctionPath(paths, f, schemaNames)
+	}
 
 	return toYAML(doc, 0), nil
 }
 
 // generateModelSchema creates an OpenAPI schema for a CloudPact model
-func generateModelSchema(model *grammar.Model) map[string]interface{} {
+func generateModelSchema(model *grammar.Model, schemaNames map[string]struct{}) map[string]interface{} {
 	schema := map[string]interface{}{
 		"type":       "object",
 		"properties": map[string]interface{}{},
@@ -141,7 +156,7 @@ func generateModelSchema(model *grammar.Model) map[string]interface{} {
 	required = append(required, "id")
 
 	for _, field := range model.Fields {
-		fieldSchema := generateFieldSchema(field)
+		fieldSchema := generateTypeSchema(field.Type, schemaNames)
 		props[field.Name] = fieldSchema
 
 		// For now, mark all fields as required
@@ -153,9 +168,36 @@ func generateModelSchema(model *grammar.Model) map[string]interface{} {
 	return schema
 }
 
-// generateFieldSchema creates an OpenAPI schema for a model field with semantic type support
-func generateFieldSchema(field *grammar.Field) map[string]interface{} {
-	baseType, format, description, example, constraints := mapSemanticType(field.Type.Name)
+// generateRecordSchema creates an OpenAPI schema for a CloudPact record
+func generateRecordSchema(record *grammar.Record, schemaNames map[string]struct{}) map[string]interface{} {
+	schema := map[string]interface{}{
+		"type":       "object",
+		"properties": map[string]interface{}{},
+		"required":   []interface{}{},
+	}
+
+	props := schema["properties"].(map[string]interface{})
+	required := []interface{}{}
+
+	for _, field := range record.Fields {
+		fieldSchema := generateTypeSchema(field.Type, schemaNames)
+		props[field.Name] = fieldSchema
+		required = append(required, field.Name)
+	}
+
+	schema["required"] = required
+	return schema
+}
+
+// generateTypeSchema maps a CloudPact type to an OpenAPI schema, with $ref support
+func generateTypeSchema(t *grammar.Type, schemaNames map[string]struct{}) map[string]interface{} {
+	if _, ok := schemaNames[t.Name]; ok {
+		return map[string]interface{}{
+			"$ref": fmt.Sprintf("#/components/schemas/%s", t.Name),
+		}
+	}
+
+	baseType, format, description, example, constraints := mapSemanticType(t.Name)
 
 	fieldSchema := map[string]interface{}{
 		"type": baseType,
@@ -173,7 +215,6 @@ func generateFieldSchema(field *grammar.Field) map[string]interface{} {
 		fieldSchema["example"] = example
 	}
 
-	// Add validation constraints
 	for key, value := range constraints {
 		fieldSchema[key] = value
 	}
@@ -432,6 +473,63 @@ func generateModelPaths(paths map[string]interface{}, model *grammar.Model) {
 				},
 			},
 		},
+	}
+}
+
+// generateFunctionPath creates a POST endpoint for a function
+func generateFunctionPath(paths map[string]interface{}, fn *grammar.Function, schemaNames map[string]struct{}) {
+	funcName := strings.ToLower(fn.Name)
+
+	op := map[string]interface{}{
+		"summary":     fmt.Sprintf("Call %s", fn.Name),
+		"description": fn.Why,
+		"tags":        []string{"Functions"},
+		"responses":   map[string]interface{}{},
+	}
+
+	// Request body from parameters
+	if len(fn.Parameters) > 0 {
+		paramSchema := map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+			"required":   []interface{}{},
+		}
+		props := paramSchema["properties"].(map[string]interface{})
+		required := []interface{}{}
+		for _, p := range fn.Parameters {
+			props[p.Name] = generateTypeSchema(p.Type, schemaNames)
+			required = append(required, p.Name)
+		}
+		paramSchema["required"] = required
+
+		op["requestBody"] = map[string]interface{}{
+			"required": true,
+			"content": map[string]interface{}{
+				"application/json": map[string]interface{}{
+					"schema": paramSchema,
+				},
+			},
+		}
+	}
+
+	responses := op["responses"].(map[string]interface{})
+	if fn.ReturnType != nil {
+		responses["200"] = map[string]interface{}{
+			"description": "Successful response",
+			"content": map[string]interface{}{
+				"application/json": map[string]interface{}{
+					"schema": generateTypeSchema(fn.ReturnType, schemaNames),
+				},
+			},
+		}
+	} else {
+		responses["204"] = map[string]interface{}{
+			"description": "No content",
+		}
+	}
+
+	paths[fmt.Sprintf("/%s", funcName)] = map[string]interface{}{
+		"post": op,
 	}
 }
 

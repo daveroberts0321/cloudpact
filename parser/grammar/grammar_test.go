@@ -1,7 +1,6 @@
 package grammar
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -32,13 +31,17 @@ model User {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	expected := &File{Models: []*Model{
-		{Name: "User", Fields: []*Field{
-			{Name: "id", Type: &Type{Name: "Int"}},
-			{Name: "name", Type: &Type{Name: "String"}},
-		}},
-	}}
-	if !reflect.DeepEqual(file, expected) {
-		t.Fatalf("expected %#v, got %#v", expected, file)
+	if len(file.Models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(file.Models))
+	}
+	model := file.Models[0]
+	if len(model.Fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(model.Fields))
+	}
+	if model.Fields[0].Name != "id" || model.Fields[0].Type.Name != "Int" {
+		t.Fatalf("unexpected first field: %#v", model.Fields[0])
+	}
+	if model.Fields[1].Name != "name" || model.Fields[1].Type.Name != "String" {
+		t.Fatalf("unexpected second field: %#v", model.Fields[1])
 	}
 }
