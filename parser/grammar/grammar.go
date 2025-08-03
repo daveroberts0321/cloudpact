@@ -7,109 +7,121 @@ import (
 	"text/scanner"
 )
 
-// Extended Grammar:
-//   File        := { Declaration }
-//   Declaration := Model | Function | Assignment
-//   Model       := 'model' IDENT '{' { Field } '}'
-//   Field       := IDENT ':' Type [ RelationshipDecl ]
-//   Type        := IDENT [ TypeConstraints ]
-//   Function    := 'function' IDENT '(' ParamList ')' [ 'returns' Type ] FunctionBody
-//   FunctionBody:= WhyClause 'do:' StatementList
-//   WhyClause   := 'why:' STRING
-//   Assignment  := 'assign-use' IDENT 'as' Type [ 'why:' STRING ] [ 'validate:' ValidationRule ]
-//   RelationshipDecl := 'belongs_to' | 'has_one' | 'has_many' | 'references'
-//   NativeBlock := ('go-native:' | 'ts-native:') '```' LanguageCode '```'
+// Enhanced CloudPact Grammar:
+//   File            := ModuleDecl { Declaration }
+//   ModuleDecl      := 'module' IDENT
+//   Declaration     := RecordDef | FunctionDef | TypeDef | Model | Assignment
+//   RecordDef       := 'define' 'record' IDENT { FieldDef }
+//   FieldDef        := IDENT ':' Type
+//   FunctionDef     := 'function' IDENT '(' ParamList ')' [ 'returns' Type ] AIAnnotations WhyClause DoBlock
+//   DoBlock         := 'do:' { Statement }
+//   Statement       := IfStatement | Assignment | Return | CreateStatement | Expression
+//   IfStatement     := 'if' Expression 'then' Statement [ 'else' Statement ]
+//   CreateStatement := 'create' IDENT 'with:' { FieldAssignment }
+//   AIAnnotation    := ('ai-feedback:' | 'ai-suggests:' | 'ai-security:' | 'ai-performance:') STRING
+//
+//   // Legacy support for existing models
+//   Model           := 'model' IDENT '{' { Field } '}'
+//   Field           := IDENT ':' Type [ RelationshipDecl ]
 
-// Position represents a source code position
+// Enhanced Position with more context
 type Position struct {
 	Line   int
 	Column int
 	Offset int
+	File   string
 }
 
-// String returns a human-readable position
 func (p Position) String() string {
+	if p.File != "" {
+		return fmt.Sprintf("%s:%d:%d", p.File, p.Line, p.Column)
+	}
 	return fmt.Sprintf("line %d, column %d", p.Line, p.Column)
 }
 
-// File represents a .cp file consisting of declarations
+// Enhanced File with module support
 type File struct {
-	Models      []*Model      `json:"models"`
+	Module      *Module       `json:"module,omitempty"`
+	Records     []*Record     `json:"records"`
+	Models      []*Model      `json:"models"` // Legacy support
 	Functions   []*Function   `json:"functions"`
-	Assignments []*Assignment `json:"assignments"`
+	TypeDefs    []*TypeDef    `json:"type_defs"`
+	Assignments []*Assignment `json:"assignments"` // Legacy support
+	Position    *Position     `json:"position,omitempty"`
 }
 
-// Model declares a new model with a name and a list of fields
-type Model struct {
+// Module declaration
+type Module struct {
 	Name     string    `json:"name"`
-	Fields   []*Field  `json:"fields"`
 	Position *Position `json:"position,omitempty"`
 }
 
-// Field represents a single field within a model with optional relationships
-type Field struct {
-	Name         string        `json:"name"`
-	Type         *Type         `json:"type"`
-	Relationship *Relationship `json:"relationship,omitempty"`
-	Position     *Position     `json:"position,omitempty"`
+// Record definition (new syntax)
+type Record struct {
+	Name     string      `json:"name"`
+	Fields   []*FieldDef `json:"fields"`
+	Position *Position   `json:"position,omitempty"`
 }
 
-// Type of a field with semantic information and constraints
-type Type struct {
-	Name        string                 `json:"name"`
-	Constraints map[string]interface{} `json:"constraints,omitempty"`
-	Position    *Position              `json:"position,omitempty"`
-}
-
-// Relationship defines model relationships (Django-style)
-type Relationship struct {
-	Kind     string    `json:"kind"`   // "belongs_to", "has_one", "has_many", "references"
-	Target   string    `json:"target"` // Target model name
-	Position *Position `json:"position,omitempty"`
-}
-
-// Function represents a CloudPact function with business context
-type Function struct {
-	Name       string        `json:"name"`
-	Parameters []*Parameter  `json:"parameters"`
-	ReturnType *Type         `json:"return_type,omitempty"`
-	Why        string        `json:"why"` // Business explanation
-	Body       *FunctionBody `json:"body"`
-	Position   *Position     `json:"position,omitempty"`
-}
-
-// Parameter represents a function parameter
-type Parameter struct {
+// FieldDef for new record syntax
+type FieldDef struct {
 	Name     string    `json:"name"`
 	Type     *Type     `json:"type"`
 	Position *Position `json:"position,omitempty"`
 }
 
-// FunctionBody contains the function implementation
+// TypeDef for custom type definitions
+type TypeDef struct {
+	Name       string                 `json:"name"`
+	BaseType   *Type                  `json:"base_type"`
+	Validation map[string]interface{} `json:"validation,omitempty"`
+	Why        string                 `json:"why,omitempty"`
+	Position   *Position              `json:"position,omitempty"`
+}
+
+// Enhanced Function with AI annotations
+type Function struct {
+	Name          string          `json:"name"`
+	Parameters    []*Parameter    `json:"parameters"`
+	ReturnType    *Type           `json:"return_type,omitempty"`
+	Why           string          `json:"why"`
+	AIAnnotations []*AIAnnotation `json:"ai_annotations,omitempty"`
+	Body          *FunctionBody   `json:"body"`
+	Position      *Position       `json:"position,omitempty"`
+}
+
+// AI Annotations for collaborative programming
+type AIAnnotation struct {
+	Type     string    `json:"type"` // "feedback", "suggests", "security", "performance"
+	Content  string    `json:"content"`
+	Position *Position `json:"position,omitempty"`
+}
+
+// Enhanced FunctionBody with rich statements
 type FunctionBody struct {
 	Statements   []Statement    `json:"statements"`
 	NativeBlocks []*NativeBlock `json:"native_blocks,omitempty"`
 	Position     *Position      `json:"position,omitempty"`
 }
 
-// Statement represents different types of statements in function bodies
+// Statement interface for all statement types
 type Statement interface {
 	StatementType() string
 	GetPosition() *Position
 }
 
-// IfStatement represents conditional logic
+// IfStatement for conditional logic
 type IfStatement struct {
-	Condition Expression  `json:"condition"`
-	ThenBody  []Statement `json:"then_body"`
-	ElseBody  []Statement `json:"else_body,omitempty"`
-	Position  *Position   `json:"position,omitempty"`
+	Condition Expression `json:"condition"`
+	ThenStmt  Statement  `json:"then_stmt"`
+	ElseStmt  Statement  `json:"else_stmt,omitempty"`
+	Position  *Position  `json:"position,omitempty"`
 }
 
 func (s *IfStatement) StatementType() string  { return "if" }
 func (s *IfStatement) GetPosition() *Position { return s.Position }
 
-// ReturnStatement represents a return statement
+// ReturnStatement
 type ReturnStatement struct {
 	Value    Expression `json:"value,omitempty"`
 	Position *Position  `json:"position,omitempty"`
@@ -118,7 +130,7 @@ type ReturnStatement struct {
 func (s *ReturnStatement) StatementType() string  { return "return" }
 func (s *ReturnStatement) GetPosition() *Position { return s.Position }
 
-// AssignStatement represents variable assignment
+// AssignStatement for variable assignments
 type AssignStatement struct {
 	Variable string     `json:"variable"`
 	Value    Expression `json:"value"`
@@ -128,13 +140,39 @@ type AssignStatement struct {
 func (s *AssignStatement) StatementType() string  { return "assign" }
 func (s *AssignStatement) GetPosition() *Position { return s.Position }
 
-// Expression represents different types of expressions
+// CreateStatement for "create user with:" syntax
+type CreateStatement struct {
+	TypeName    string             `json:"type_name"`
+	Assignments []*FieldAssignment `json:"assignments"`
+	Position    *Position          `json:"position,omitempty"`
+}
+
+func (s *CreateStatement) StatementType() string  { return "create" }
+func (s *CreateStatement) GetPosition() *Position { return s.Position }
+
+// FieldAssignment for create statements
+type FieldAssignment struct {
+	Field    string     `json:"field"`
+	Value    Expression `json:"value"`
+	Position *Position  `json:"position,omitempty"`
+}
+
+// FailStatement for explicit failures
+type FailStatement struct {
+	Message  string    `json:"message"`
+	Position *Position `json:"position,omitempty"`
+}
+
+func (s *FailStatement) StatementType() string  { return "fail" }
+func (s *FailStatement) GetPosition() *Position { return s.Position }
+
+// Expression interface
 type Expression interface {
 	ExpressionType() string
 	GetPosition() *Position
 }
 
-// IdentifierExpression represents a variable or function reference
+// IdentifierExpression
 type IdentifierExpression struct {
 	Name     string    `json:"name"`
 	Position *Position `json:"position,omitempty"`
@@ -143,7 +181,7 @@ type IdentifierExpression struct {
 func (e *IdentifierExpression) ExpressionType() string { return "identifier" }
 func (e *IdentifierExpression) GetPosition() *Position { return e.Position }
 
-// LiteralExpression represents literal values
+// LiteralExpression
 type LiteralExpression struct {
 	Value    interface{} `json:"value"`
 	Position *Position   `json:"position,omitempty"`
@@ -152,14 +190,75 @@ type LiteralExpression struct {
 func (e *LiteralExpression) ExpressionType() string { return "literal" }
 func (e *LiteralExpression) GetPosition() *Position { return e.Position }
 
-// NativeBlock represents go-native: or ts-native: code blocks
+// BinaryExpression for operations like "user.age < 18"
+type BinaryExpression struct {
+	Left     Expression `json:"left"`
+	Operator string     `json:"operator"`
+	Right    Expression `json:"right"`
+	Position *Position  `json:"position,omitempty"`
+}
+
+func (e *BinaryExpression) ExpressionType() string { return "binary" }
+func (e *BinaryExpression) GetPosition() *Position { return e.Position }
+
+// CallExpression for function calls
+type CallExpression struct {
+	Function  string       `json:"function"`
+	Arguments []Expression `json:"arguments"`
+	Position  *Position    `json:"position,omitempty"`
+}
+
+func (e *CallExpression) ExpressionType() string { return "call" }
+func (e *CallExpression) GetPosition() *Position { return e.Position }
+
+// MemberExpression for "user.email"
+type MemberExpression struct {
+	Object   Expression `json:"object"`
+	Property string     `json:"property"`
+	Position *Position  `json:"position,omitempty"`
+}
+
+func (e *MemberExpression) ExpressionType() string { return "member" }
+func (e *MemberExpression) GetPosition() *Position { return e.Position }
+
+// Legacy types for backward compatibility
+type Model struct {
+	Name     string    `json:"name"`
+	Fields   []*Field  `json:"fields"`
+	Position *Position `json:"position,omitempty"`
+}
+
+type Field struct {
+	Name         string        `json:"name"`
+	Type         *Type         `json:"type"`
+	Relationship *Relationship `json:"relationship,omitempty"`
+	Position     *Position     `json:"position,omitempty"`
+}
+
+type Type struct {
+	Name        string                 `json:"name"`
+	Constraints map[string]interface{} `json:"constraints,omitempty"`
+	Position    *Position              `json:"position,omitempty"`
+}
+
+type Relationship struct {
+	Kind     string    `json:"kind"`
+	Target   string    `json:"target"`
+	Position *Position `json:"position,omitempty"`
+}
+
+type Parameter struct {
+	Name     string    `json:"name"`
+	Type     *Type     `json:"type"`
+	Position *Position `json:"position,omitempty"`
+}
+
 type NativeBlock struct {
-	Language string    `json:"language"` // "go" or "ts"
+	Language string    `json:"language"`
 	Code     string    `json:"code"`
 	Position *Position `json:"position,omitempty"`
 }
 
-// Assignment represents assign-use declarations for semantic types
 type Assignment struct {
 	TypeName   string                 `json:"type_name"`
 	BaseType   *Type                  `json:"base_type"`
@@ -168,9 +267,21 @@ type Assignment struct {
 	Position   *Position              `json:"position,omitempty"`
 }
 
+// Enhanced Parser
+type parser struct {
+	scanner  scanner.Scanner
+	tok      rune
+	filename string
+}
+
 // Parse reads CloudPact content from r and returns the parsed AST
 func Parse(r io.Reader) (*File, error) {
-	p := &parser{}
+	return ParseWithFilename(r, "")
+}
+
+// ParseWithFilename allows tracking source file for better error messages
+func ParseWithFilename(r io.Reader, filename string) (*File, error) {
+	p := &parser{filename: filename}
 	p.scanner.Init(r)
 	p.scanner.Mode = scanner.ScanIdents | scanner.ScanInts | scanner.ScanFloats |
 		scanner.ScanChars | scanner.ScanStrings | scanner.ScanComments
@@ -183,11 +294,6 @@ func ParseString(s string) (*File, error) {
 	return Parse(strings.NewReader(s))
 }
 
-type parser struct {
-	scanner scanner.Scanner
-	tok     rune
-}
-
 func (p *parser) next() {
 	p.tok = p.scanner.Scan()
 }
@@ -198,28 +304,36 @@ func (p *parser) position() *Position {
 		Line:   pos.Line,
 		Column: pos.Column,
 		Offset: pos.Offset,
+		File:   p.filename,
 	}
 }
 
 func (p *parser) parseFile() (*File, error) {
 	file := &File{
+		Records:     []*Record{},
 		Models:      []*Model{},
 		Functions:   []*Function{},
+		TypeDefs:    []*TypeDef{},
 		Assignments: []*Assignment{},
+		Position:    p.position(),
 	}
 
-	for p.tok != scanner.EOF {
-		if p.tok == scanner.EOF {
-			break
+	// Parse optional module declaration
+	if p.tok == scanner.Ident && p.scanner.TokenText() == "module" {
+		module, err := p.parseModule()
+		if err != nil {
+			return nil, err
 		}
+		file.Module = module
+	}
 
+	// Parse declarations
+	for p.tok != scanner.EOF {
 		switch {
-		case p.tok == scanner.Ident && p.scanner.TokenText() == "model":
-			model, err := p.parseModel()
-			if err != nil {
+		case p.tok == scanner.Ident && p.scanner.TokenText() == "define":
+			if err := p.parseDefine(file); err != nil {
 				return nil, err
 			}
-			file.Models = append(file.Models, model)
 
 		case p.tok == scanner.Ident && p.scanner.TokenText() == "function":
 			function, err := p.parseFunction()
@@ -227,6 +341,13 @@ func (p *parser) parseFile() (*File, error) {
 				return nil, err
 			}
 			file.Functions = append(file.Functions, function)
+
+		case p.tok == scanner.Ident && p.scanner.TokenText() == "model":
+			model, err := p.parseModel()
+			if err != nil {
+				return nil, err
+			}
+			file.Models = append(file.Models, model)
 
 		case p.tok == scanner.Ident && p.scanner.TokenText() == "assign-use":
 			assignment, err := p.parseAssignment()
@@ -243,22 +364,790 @@ func (p *parser) parseFile() (*File, error) {
 	return file, nil
 }
 
-func (p *parser) expect(tok rune, expected string) error {
-	if p.tok != tok {
-		return fmt.Errorf("expected %s, got %q at %s", expected, p.scanner.TokenText(), p.position())
+func (p *parser) parseModule() (*Module, error) {
+	pos := p.position()
+
+	if err := p.expectKeyword("module"); err != nil {
+		return nil, err
 	}
+
+	if p.tok != scanner.Ident {
+		return nil, fmt.Errorf("expected module name, got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	name := p.scanner.TokenText()
 	p.next()
+
+	return &Module{
+		Name:     name,
+		Position: pos,
+	}, nil
+}
+
+func (p *parser) parseDefine(file *File) error {
+	if err := p.expectKeyword("define"); err != nil {
+		return err
+	}
+
+	if p.tok != scanner.Ident {
+		return fmt.Errorf("expected 'record' or 'type' after 'define', got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	switch p.scanner.TokenText() {
+	case "record":
+		record, err := p.parseRecord()
+		if err != nil {
+			return err
+		}
+		file.Records = append(file.Records, record)
+	case "type":
+		typeDef, err := p.parseTypeDef()
+		if err != nil {
+			return err
+		}
+		file.TypeDefs = append(file.TypeDefs, typeDef)
+	default:
+		return fmt.Errorf("expected 'record' or 'type' after 'define', got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
 	return nil
 }
 
-func (p *parser) expectKeyword(keyword string) error {
-	if p.tok != scanner.Ident || p.scanner.TokenText() != keyword {
-		return fmt.Errorf("expected '%s', got %q at %s", keyword, p.scanner.TokenText(), p.position())
+func (p *parser) parseRecord() (*Record, error) {
+	pos := p.position()
+
+	if err := p.expectKeyword("record"); err != nil {
+		return nil, err
 	}
+
+	if p.tok != scanner.Ident {
+		return nil, fmt.Errorf("expected record name, got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	name := p.scanner.TokenText()
 	p.next()
-	return nil
+
+	record := &Record{
+		Name:     name,
+		Position: pos,
+		Fields:   []*FieldDef{},
+	}
+
+	// Parse fields until we hit a keyword that starts a new declaration
+	for p.tok == scanner.Ident && !isTopLevelKeyword(p.scanner.TokenText()) {
+		field, err := p.parseFieldDef()
+		if err != nil {
+			return nil, err
+		}
+		record.Fields = append(record.Fields, field)
+	}
+
+	return record, nil
 }
 
+func (p *parser) parseFieldDef() (*FieldDef, error) {
+	pos := p.position()
+
+	if p.tok != scanner.Ident {
+		return nil, fmt.Errorf("expected field name, got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	name := p.scanner.TokenText()
+	p.next()
+
+	if err := p.expect(':', "':'"); err != nil {
+		return nil, err
+	}
+
+	fieldType, err := p.parseType()
+	if err != nil {
+		return nil, err
+	}
+
+	return &FieldDef{
+		Name:     name,
+		Type:     fieldType,
+		Position: pos,
+	}, nil
+}
+
+func (p *parser) parseTypeDef() (*TypeDef, error) {
+	pos := p.position()
+
+	if err := p.expectKeyword("type"); err != nil {
+		return nil, err
+	}
+
+	if p.tok != scanner.Ident {
+		return nil, fmt.Errorf("expected type name, got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	name := p.scanner.TokenText()
+	p.next()
+
+	if err := p.expectKeyword("as"); err != nil {
+		return nil, err
+	}
+
+	baseType, err := p.parseType()
+	if err != nil {
+		return nil, err
+	}
+
+	typeDef := &TypeDef{
+		Name:       name,
+		BaseType:   baseType,
+		Position:   pos,
+		Validation: make(map[string]interface{}),
+	}
+
+	// Parse optional why and validation clauses
+	for p.tok == scanner.Ident {
+		switch p.scanner.TokenText() {
+		case "why":
+			p.next()
+			if err := p.expect(':', "':'"); err != nil {
+				return nil, err
+			}
+			if p.tok != scanner.String {
+				return nil, fmt.Errorf("expected string after 'why:', got %q at %s", p.scanner.TokenText(), p.position())
+			}
+			typeDef.Why = strings.Trim(p.scanner.TokenText(), `"`)
+			p.next()
+		case "validate":
+			p.next()
+			if err := p.expect(':', "':'"); err != nil {
+				return nil, err
+			}
+			if p.tok == scanner.String {
+				typeDef.Validation["rule"] = strings.Trim(p.scanner.TokenText(), `"`)
+				p.next()
+			}
+		default:
+			// Not a type definition clause, break out
+			return typeDef, nil
+		}
+	}
+
+	return typeDef, nil
+}
+
+func (p *parser) parseFunction() (*Function, error) {
+	pos := p.position()
+
+	if err := p.expectKeyword("function"); err != nil {
+		return nil, err
+	}
+
+	if p.tok != scanner.Ident {
+		return nil, fmt.Errorf("expected function name, got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	name := p.scanner.TokenText()
+	p.next()
+
+	if err := p.expect('(', "'('"); err != nil {
+		return nil, err
+	}
+
+	parameters, err := p.parseParameterList()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := p.expect(')', "')'"); err != nil {
+		return nil, err
+	}
+
+	function := &Function{
+		Name:          name,
+		Parameters:    parameters,
+		Position:      pos,
+		AIAnnotations: []*AIAnnotation{},
+	}
+
+	// Optional return type
+	if p.tok == scanner.Ident && p.scanner.TokenText() == "returns" {
+		p.next()
+		returnType, err := p.parseType()
+		if err != nil {
+			return nil, err
+		}
+		function.ReturnType = returnType
+	}
+
+	// Parse AI annotations
+	for p.tok == scanner.Ident && isAIAnnotation(p.scanner.TokenText()) {
+		annotation, err := p.parseAIAnnotation()
+		if err != nil {
+			return nil, err
+		}
+		function.AIAnnotations = append(function.AIAnnotations, annotation)
+	}
+
+	// Parse why clause
+	if err := p.expectKeyword("why"); err != nil {
+		return nil, err
+	}
+
+	if err := p.expect(':', "':'"); err != nil {
+		return nil, err
+	}
+
+	if p.tok != scanner.String {
+		return nil, fmt.Errorf("expected string after 'why:', got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	function.Why = strings.Trim(p.scanner.TokenText(), `"`)
+	p.next()
+
+	// Parse function body
+	if err := p.expectKeyword("do"); err != nil {
+		return nil, err
+	}
+
+	if err := p.expect(':', "':'"); err != nil {
+		return nil, err
+	}
+
+	body, err := p.parseFunctionBody()
+	if err != nil {
+		return nil, err
+	}
+
+	function.Body = body
+
+	return function, nil
+}
+
+func (p *parser) parseAIAnnotation() (*AIAnnotation, error) {
+	pos := p.position()
+
+	if !isAIAnnotation(p.scanner.TokenText()) {
+		return nil, fmt.Errorf("expected AI annotation, got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	annotationType := strings.TrimPrefix(p.scanner.TokenText(), "ai-")
+	annotationType = strings.TrimSuffix(annotationType, ":")
+	p.next()
+
+	if err := p.expect(':', "':'"); err != nil {
+		return nil, err
+	}
+
+	if p.tok != scanner.String {
+		return nil, fmt.Errorf("expected string after AI annotation, got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	content := strings.Trim(p.scanner.TokenText(), `"`)
+	p.next()
+
+	return &AIAnnotation{
+		Type:     annotationType,
+		Content:  content,
+		Position: pos,
+	}, nil
+}
+
+func (p *parser) parseFunctionBody() (*FunctionBody, error) {
+	pos := p.position()
+
+	body := &FunctionBody{
+		Position:     pos,
+		Statements:   []Statement{},
+		NativeBlocks: []*NativeBlock{},
+	}
+
+	// Parse statements until we hit EOF or a top-level keyword
+	for p.tok != scanner.EOF && !(p.tok == scanner.Ident && isTopLevelKeyword(p.scanner.TokenText())) {
+		// Check for native blocks
+		if p.tok == scanner.Ident && (p.scanner.TokenText() == "go-native" || p.scanner.TokenText() == "ts-native") {
+			nativeBlock, err := p.parseNativeBlock()
+			if err != nil {
+				return nil, err
+			}
+			body.NativeBlocks = append(body.NativeBlocks, nativeBlock)
+			continue
+		}
+
+		// Parse regular statements
+		stmt, err := p.parseStatement()
+		if err != nil {
+			return nil, err
+		}
+		if stmt != nil {
+			body.Statements = append(body.Statements, stmt)
+		}
+	}
+
+	return body, nil
+}
+
+func (p *parser) parseStatement() (Statement, error) {
+	switch {
+	case p.tok == scanner.Ident && p.scanner.TokenText() == "if":
+		return p.parseIfStatement()
+	case p.tok == scanner.Ident && p.scanner.TokenText() == "return":
+		return p.parseReturnStatement()
+	case p.tok == scanner.Ident && p.scanner.TokenText() == "set":
+		return p.parseSetStatement()
+	case p.tok == scanner.Ident && p.scanner.TokenText() == "create":
+		return p.parseCreateStatement()
+	case p.tok == scanner.Ident && p.scanner.TokenText() == "fail":
+		return p.parseFailStatement()
+	case p.tok == scanner.Ident && p.scanner.TokenText() == "use":
+		// Handle "use SHA256 algorithm" style statements
+		return p.parseUseStatement()
+	default:
+		// Skip unknown tokens for now - could be expression statements
+		p.next()
+		return nil, nil
+	}
+}
+
+func (p *parser) parseIfStatement() (*IfStatement, error) {
+	pos := p.position()
+
+	if err := p.expectKeyword("if"); err != nil {
+		return nil, err
+	}
+
+	condition, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := p.expectKeyword("then"); err != nil {
+		return nil, err
+	}
+
+	thenStmt, err := p.parseStatement()
+	if err != nil {
+		return nil, err
+	}
+
+	ifStmt := &IfStatement{
+		Condition: condition,
+		ThenStmt:  thenStmt,
+		Position:  pos,
+	}
+
+	// Optional else clause
+	if p.tok == scanner.Ident && p.scanner.TokenText() == "else" {
+		p.next()
+		elseStmt, err := p.parseStatement()
+		if err != nil {
+			return nil, err
+		}
+		ifStmt.ElseStmt = elseStmt
+	}
+
+	return ifStmt, nil
+}
+
+func (p *parser) parseReturnStatement() (*ReturnStatement, error) {
+	pos := p.position()
+
+	if err := p.expectKeyword("return"); err != nil {
+		return nil, err
+	}
+
+	// Optional return value
+	var value Expression
+	if p.tok != scanner.EOF && !(p.tok == scanner.Ident && isStatementKeyword(p.scanner.TokenText())) {
+		var err error
+		value, err = p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &ReturnStatement{
+		Value:    value,
+		Position: pos,
+	}, nil
+}
+
+func (p *parser) parseSetStatement() (*AssignStatement, error) {
+	pos := p.position()
+
+	if err := p.expectKeyword("set"); err != nil {
+		return nil, err
+	}
+
+	if p.tok != scanner.Ident {
+		return nil, fmt.Errorf("expected variable name after 'set', got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	variable := p.scanner.TokenText()
+	p.next()
+
+	if err := p.expect('=', "'='"); err != nil {
+		return nil, err
+	}
+
+	value, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+
+	return &AssignStatement{
+		Variable: variable,
+		Value:    value,
+		Position: pos,
+	}, nil
+}
+
+func (p *parser) parseCreateStatement() (*CreateStatement, error) {
+	pos := p.position()
+
+	if err := p.expectKeyword("create"); err != nil {
+		return nil, err
+	}
+
+	if p.tok != scanner.Ident {
+		return nil, fmt.Errorf("expected type name after 'create', got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	typeName := p.scanner.TokenText()
+	p.next()
+
+	if err := p.expectKeyword("with"); err != nil {
+		return nil, err
+	}
+
+	if err := p.expect(':', "':'"); err != nil {
+		return nil, err
+	}
+
+	var assignments []*FieldAssignment
+
+	// Parse field assignments
+	for p.tok == scanner.Ident && !isStatementKeyword(p.scanner.TokenText()) && !isTopLevelKeyword(p.scanner.TokenText()) {
+		fieldPos := p.position()
+		field := p.scanner.TokenText()
+		p.next()
+
+		if err := p.expect('=', "'='"); err != nil {
+			return nil, err
+		}
+
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+
+		assignments = append(assignments, &FieldAssignment{
+			Field:    field,
+			Value:    value,
+			Position: fieldPos,
+		})
+	}
+
+	return &CreateStatement{
+		TypeName:    typeName,
+		Assignments: assignments,
+		Position:    pos,
+	}, nil
+}
+
+func (p *parser) parseFailStatement() (*FailStatement, error) {
+	pos := p.position()
+
+	if err := p.expectKeyword("fail"); err != nil {
+		return nil, err
+	}
+
+	if p.tok != scanner.String {
+		return nil, fmt.Errorf("expected error message string after 'fail', got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	message := strings.Trim(p.scanner.TokenText(), `"`)
+	p.next()
+
+	return &FailStatement{
+		Message:  message,
+		Position: pos,
+	}, nil
+}
+
+func (p *parser) parseUseStatement() (*AssignStatement, error) {
+	pos := p.position()
+
+	if err := p.expectKeyword("use"); err != nil {
+		return nil, err
+	}
+
+	// Parse the rest as a simple expression for now
+	// "use SHA256 algorithm" becomes an assignment
+	var parts []string
+	for p.tok == scanner.Ident {
+		parts = append(parts, p.scanner.TokenText())
+		p.next()
+	}
+
+	useExpr := strings.Join(parts, " ")
+
+	return &AssignStatement{
+		Variable: "__use__",
+		Value: &LiteralExpression{
+			Value:    useExpr,
+			Position: pos,
+		},
+		Position: pos,
+	}, nil
+}
+
+func (p *parser) parseExpression() (Expression, error) {
+	return p.parseComparison()
+}
+
+func (p *parser) parseComparison() (Expression, error) {
+	left, err := p.parsePrimary()
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle comparison operators
+	for p.tok == '<' || p.tok == '>' || p.tok == '=' ||
+		(p.tok == scanner.Ident && (p.scanner.TokenText() == "contains" || p.scanner.TokenText() == "not")) {
+
+		var operator string
+		if p.tok == scanner.Ident {
+			if p.scanner.TokenText() == "not" {
+				p.next()
+				if p.tok == scanner.Ident && p.scanner.TokenText() == "contains" {
+					operator = "not contains"
+					p.next()
+				} else {
+					operator = "not"
+				}
+			} else {
+				operator = p.scanner.TokenText()
+				p.next()
+			}
+		} else {
+			operator = string(rune(p.tok))
+			p.next()
+		}
+
+		right, err := p.parsePrimary()
+		if err != nil {
+			return nil, err
+		}
+
+		left = &BinaryExpression{
+			Left:     left,
+			Operator: operator,
+			Right:    right,
+			Position: left.GetPosition(),
+		}
+	}
+
+	return left, nil
+}
+
+func (p *parser) parsePrimary() (Expression, error) {
+	pos := p.position()
+
+	switch p.tok {
+	case scanner.Ident:
+		name := p.scanner.TokenText()
+		p.next()
+
+		// Check for member access (user.email)
+		if p.tok == '.' {
+			p.next()
+			if p.tok != scanner.Ident {
+				return nil, fmt.Errorf("expected property name after '.', got %q at %s", p.scanner.TokenText(), p.position())
+			}
+			property := p.scanner.TokenText()
+			p.next()
+			return &MemberExpression{
+				Object: &IdentifierExpression{
+					Name:     name,
+					Position: pos,
+				},
+				Property: property,
+				Position: pos,
+			}, nil
+		}
+
+		// Check for function call (functionName())
+		if p.tok == '(' {
+			p.next()
+			var args []Expression
+
+			// Parse arguments
+			if p.tok != ')' {
+				for {
+					arg, err := p.parseExpression()
+					if err != nil {
+						return nil, err
+					}
+					args = append(args, arg)
+
+					if p.tok != ',' {
+						break
+					}
+					p.next() // consume comma
+				}
+			}
+
+			if err := p.expect(')', "')'"); err != nil {
+				return nil, err
+			}
+
+			return &CallExpression{
+				Function:  name,
+				Arguments: args,
+				Position:  pos,
+			}, nil
+		}
+
+		// Simple identifier
+		return &IdentifierExpression{
+			Name:     name,
+			Position: pos,
+		}, nil
+
+	case scanner.String:
+		value := strings.Trim(p.scanner.TokenText(), `"`)
+		p.next()
+		return &LiteralExpression{
+			Value:    value,
+			Position: pos,
+		}, nil
+
+	case scanner.Int:
+		value := p.scanner.TokenText()
+		p.next()
+		// Convert to int - simplified for now
+		return &LiteralExpression{
+			Value:    value,
+			Position: pos,
+		}, nil
+
+	case scanner.Float:
+		value := p.scanner.TokenText()
+		p.next()
+		return &LiteralExpression{
+			Value:    value,
+			Position: pos,
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unexpected token in expression: %q at %s", p.scanner.TokenText(), p.position())
+	}
+}
+
+func (p *parser) parseParameterList() ([]*Parameter, error) {
+	var parameters []*Parameter
+
+	if p.tok == ')' {
+		return parameters, nil // Empty parameter list
+	}
+
+	for {
+		param, err := p.parseParameter()
+		if err != nil {
+			return nil, err
+		}
+		parameters = append(parameters, param)
+
+		if p.tok != ',' {
+			break
+		}
+		p.next() // consume comma
+	}
+
+	return parameters, nil
+}
+
+func (p *parser) parseParameter() (*Parameter, error) {
+	pos := p.position()
+
+	if p.tok != scanner.Ident {
+		return nil, fmt.Errorf("expected parameter name, got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	name := p.scanner.TokenText()
+	p.next()
+
+	if err := p.expect(':', "':'"); err != nil {
+		return nil, err
+	}
+
+	paramType, err := p.parseType()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Parameter{
+		Name:     name,
+		Type:     paramType,
+		Position: pos,
+	}, nil
+}
+
+func (p *parser) parseType() (*Type, error) {
+	pos := p.position()
+
+	if p.tok != scanner.Ident {
+		return nil, fmt.Errorf("expected type name, got %q at %s", p.scanner.TokenText(), p.position())
+	}
+
+	typeName := p.scanner.TokenText()
+	p.next()
+
+	return &Type{
+		Name:        typeName,
+		Position:    pos,
+		Constraints: make(map[string]interface{}),
+	}, nil
+}
+
+func (p *parser) parseNativeBlock() (*NativeBlock, error) {
+	pos := p.position()
+
+	if p.tok != scanner.Ident {
+		return nil, fmt.Errorf("expected native block type at %s", p.position())
+	}
+
+	blockType := p.scanner.TokenText()
+	var language string
+
+	switch blockType {
+	case "go-native":
+		language = "go"
+	case "ts-native":
+		language = "ts"
+	default:
+		return nil, fmt.Errorf("invalid native block type %q at %s", blockType, p.position())
+	}
+	p.next()
+
+	if err := p.expect(':', "':'"); err != nil {
+		return nil, err
+	}
+
+	// For now, we'll expect the native code as a string
+	// In a full implementation, you'd parse the ``` delimited code blocks
+	if p.tok != scanner.String {
+		return nil, fmt.Errorf("expected native code string at %s", p.position())
+	}
+
+	code := strings.Trim(p.scanner.TokenText(), `"`)
+	p.next()
+
+	return &NativeBlock{
+		Language: language,
+		Code:     code,
+		Position: pos,
+	}, nil
+}
+
+// Legacy parser methods for backward compatibility
 func (p *parser) parseModel() (*Model, error) {
 	pos := p.position()
 
@@ -338,23 +1227,6 @@ func (p *parser) parseField() (*Field, error) {
 	return field, nil
 }
 
-func (p *parser) parseType() (*Type, error) {
-	pos := p.position()
-
-	if p.tok != scanner.Ident {
-		return nil, fmt.Errorf("expected type name, got %q at %s", p.scanner.TokenText(), p.position())
-	}
-
-	typeName := p.scanner.TokenText()
-	p.next()
-
-	return &Type{
-		Name:        typeName,
-		Position:    pos,
-		Constraints: make(map[string]interface{}),
-	}, nil
-}
-
 func (p *parser) parseRelationship() (*Relationship, error) {
 	pos := p.position()
 
@@ -378,208 +1250,6 @@ func (p *parser) parseRelationship() (*Relationship, error) {
 	return &Relationship{
 		Kind:     kind,
 		Target:   target,
-		Position: pos,
-	}, nil
-}
-
-func (p *parser) parseFunction() (*Function, error) {
-	pos := p.position()
-
-	if err := p.expectKeyword("function"); err != nil {
-		return nil, err
-	}
-
-	if p.tok != scanner.Ident {
-		return nil, fmt.Errorf("expected function name, got %q at %s", p.scanner.TokenText(), p.position())
-	}
-
-	name := p.scanner.TokenText()
-	p.next()
-
-	if err := p.expect('(', "'('"); err != nil {
-		return nil, err
-	}
-
-	parameters, err := p.parseParameterList()
-	if err != nil {
-		return nil, err
-	}
-
-	if err := p.expect(')', "')'"); err != nil {
-		return nil, err
-	}
-
-	function := &Function{
-		Name:       name,
-		Parameters: parameters,
-		Position:   pos,
-	}
-
-	// Optional return type
-	if p.tok == scanner.Ident && p.scanner.TokenText() == "returns" {
-		p.next()
-		returnType, err := p.parseType()
-		if err != nil {
-			return nil, err
-		}
-		function.ReturnType = returnType
-	}
-
-	// Parse why clause
-	if err := p.expectKeyword("why"); err != nil {
-		return nil, err
-	}
-
-	if err := p.expect(':', "':'"); err != nil {
-		return nil, err
-	}
-
-	if p.tok != scanner.String {
-		return nil, fmt.Errorf("expected string after 'why:', got %q at %s", p.scanner.TokenText(), p.position())
-	}
-
-	why := strings.Trim(p.scanner.TokenText(), `"`)
-	function.Why = why
-	p.next()
-
-	// Parse function body
-	if err := p.expectKeyword("do"); err != nil {
-		return nil, err
-	}
-
-	if err := p.expect(':', "':'"); err != nil {
-		return nil, err
-	}
-
-	body, err := p.parseFunctionBody()
-	if err != nil {
-		return nil, err
-	}
-
-	function.Body = body
-
-	return function, nil
-}
-
-func (p *parser) parseParameterList() ([]*Parameter, error) {
-	var parameters []*Parameter
-
-	if p.tok == ')' {
-		return parameters, nil // Empty parameter list
-	}
-
-	for {
-		param, err := p.parseParameter()
-		if err != nil {
-			return nil, err
-		}
-		parameters = append(parameters, param)
-
-		if p.tok != ',' {
-			break
-		}
-		p.next() // consume comma
-	}
-
-	return parameters, nil
-}
-
-func (p *parser) parseParameter() (*Parameter, error) {
-	pos := p.position()
-
-	if p.tok != scanner.Ident {
-		return nil, fmt.Errorf("expected parameter name, got %q at %s", p.scanner.TokenText(), p.position())
-	}
-
-	name := p.scanner.TokenText()
-	p.next()
-
-	if err := p.expect(':', "':'"); err != nil {
-		return nil, err
-	}
-
-	paramType, err := p.parseType()
-	if err != nil {
-		return nil, err
-	}
-
-	return &Parameter{
-		Name:     name,
-		Type:     paramType,
-		Position: pos,
-	}, nil
-}
-
-func (p *parser) parseFunctionBody() (*FunctionBody, error) {
-	pos := p.position()
-
-	body := &FunctionBody{
-		Position:     pos,
-		Statements:   []Statement{},
-		NativeBlocks: []*NativeBlock{},
-	}
-
-	// For now, we'll implement basic statement parsing
-	// This is a simplified version - you'd expand this for full CloudPact syntax
-	for p.tok != scanner.EOF {
-		// Check for native blocks
-		if p.tok == scanner.Ident && (p.scanner.TokenText() == "go-native" || p.scanner.TokenText() == "ts-native") {
-			nativeBlock, err := p.parseNativeBlock()
-			if err != nil {
-				return nil, err
-			}
-			body.NativeBlocks = append(body.NativeBlocks, nativeBlock)
-			continue
-		}
-
-		// For now, skip to next model/function declaration
-		if p.tok == scanner.Ident && (p.scanner.TokenText() == "model" || p.scanner.TokenText() == "function" || p.scanner.TokenText() == "assign-use") {
-			break
-		}
-
-		// Simple statement parsing - extend this for full syntax
-		p.next()
-	}
-
-	return body, nil
-}
-
-func (p *parser) parseNativeBlock() (*NativeBlock, error) {
-	pos := p.position()
-
-	if p.tok != scanner.Ident {
-		return nil, fmt.Errorf("expected native block type at %s", p.position())
-	}
-
-	blockType := p.scanner.TokenText()
-	var language string
-
-	switch blockType {
-	case "go-native":
-		language = "go"
-	case "ts-native":
-		language = "ts"
-	default:
-		return nil, fmt.Errorf("invalid native block type %q at %s", blockType, p.position())
-	}
-	p.next()
-
-	if err := p.expect(':', "':'"); err != nil {
-		return nil, err
-	}
-
-	// For now, we'll expect the native code as a string
-	// In a full implementation, you'd parse the ``` delimited code blocks
-	if p.tok != scanner.String {
-		return nil, fmt.Errorf("expected native code string at %s", p.position())
-	}
-
-	code := strings.Trim(p.scanner.TokenText(), `"`)
-	p.next()
-
-	return &NativeBlock{
-		Language: language,
-		Code:     code,
 		Position: pos,
 	}, nil
 }
@@ -644,7 +1314,54 @@ func (p *parser) parseAssignment() (*Assignment, error) {
 	return assignment, nil
 }
 
-// Helper functions
+// Utility functions
+func (p *parser) expect(tok rune, expected string) error {
+	if p.tok != tok {
+		return fmt.Errorf("expected %s, got %q at %s", expected, p.scanner.TokenText(), p.position())
+	}
+	p.next()
+	return nil
+}
+
+func (p *parser) expectKeyword(keyword string) error {
+	if p.tok != scanner.Ident || p.scanner.TokenText() != keyword {
+		return fmt.Errorf("expected '%s', got %q at %s", keyword, p.scanner.TokenText(), p.position())
+	}
+	p.next()
+	return nil
+}
+
+// Helper functions for keyword recognition
+func isTopLevelKeyword(keyword string) bool {
+	topLevel := []string{"module", "define", "function", "model", "assign-use"}
+	for _, kw := range topLevel {
+		if keyword == kw {
+			return true
+		}
+	}
+	return false
+}
+
+func isStatementKeyword(keyword string) bool {
+	statements := []string{"if", "return", "set", "create", "fail", "use", "for", "while"}
+	for _, kw := range statements {
+		if keyword == kw {
+			return true
+		}
+	}
+	return false
+}
+
+func isAIAnnotation(keyword string) bool {
+	annotations := []string{"ai-feedback", "ai-suggests", "ai-security", "ai-performance", "ai-decision-accepted", "ai-decision-rejected"}
+	for _, ann := range annotations {
+		if keyword == ann || keyword == ann+":" {
+			return true
+		}
+	}
+	return false
+}
+
 func isRelationshipKeyword(keyword string) bool {
 	relationships := []string{"belongs_to", "has_one", "has_many", "references"}
 	for _, rel := range relationships {
