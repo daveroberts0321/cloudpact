@@ -17,7 +17,6 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-//go:embed templates/*
 var templates embed.FS
 
 // ProjectConfig holds the configuration for a CloudPact project
