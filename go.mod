@@ -1,6 +1,6 @@
 module github.com/daveroberts0321/cloudpact
 
-go 1.24.3
+go 1.22
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0
