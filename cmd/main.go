@@ -5,28 +5,49 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"cloudpact/parser/grammar"
+	"cloudpact/spec/openapi"
 )
 
 func main() {
 	if len(os.Args) < 3 {
-		fmt.Println("Usage: cloudpact gen model <ModelName>")
+		fmt.Println("Usage: cloudpact gen model <ModelName>\n       cloudpact gen openapi <file.cf>")
 		return
 	}
 
 	cmd := os.Args[1]
 	sub := os.Args[2]
 
-	if cmd == "gen" && sub == "model" {
+	switch {
+	case cmd == "gen" && sub == "model":
+		if len(os.Args) < 4 {
+			fmt.Println("missing model name")
+			return
+		}
 		modelName := os.Args[3]
 		generateModel(modelName)
-	} else {
+	case cmd == "gen" && sub == "openapi":
+		if len(os.Args) < 4 {
+			fmt.Println("missing .cf file")
+			return
+		}
+		cf := os.Args[3]
+		if err := generateOpenAPI(cf); err != nil {
+			fmt.Println("error:", err)
+		}
+	default:
 		fmt.Println("Unknown command")
 	}
 }
 
 func generateModel(name string) {
 	model := strings.Title(name)
-	goCode := fmt.Sprintf("package models\n\ntype %s struct {\n\tID   string `json:\"id\"`\n\tName string `json:\"name\"`\n}\n", model)
+	goCode := "package models\n\n" +
+		fmt.Sprintf("type %s struct {\n", model) +
+		"\tID   string `json:\"id\"`\n" +
+		"\tName string `json:\"name\"`\n" +
+		"}\n"
 	tsCode := fmt.Sprintf("export interface %s {\n\tid: string;\n\tname: string;\n}\n", model)
 
 	os.MkdirAll("generated/go", 0755)
@@ -35,4 +56,21 @@ func generateModel(name string) {
 	_ = os.WriteFile(fmt.Sprintf("generated/ts/%s.ts", strings.ToLower(name)), []byte(tsCode), 0644)
 
 	fmt.Printf("Model %s generated in Go and TypeScript.\n", model)
+}
+
+func generateOpenAPI(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	file, err := grammar.Parse(f)
+	if err != nil {
+		return err
+	}
+	if err := openapi.WriteFile(file, "generated/openapi/spec.yaml"); err != nil {
+		return err
+	}
+	fmt.Println("OpenAPI spec written to generated/openapi/spec.yaml")
+	return nil
 }
