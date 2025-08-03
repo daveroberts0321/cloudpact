@@ -1,8 +1,6 @@
 package grammar
 
-import (
-	"testing"
-)
+import "testing"
 
 // Test parsing of a model declaration without fields.
 func TestParseModelDeclaration(t *testing.T) {
@@ -34,17 +32,25 @@ model User {
 		t.Fatalf("expected 1 model, got %d", len(file.Models))
 	}
 
-	m := file.Models[0]
-	if m.Name != "User" {
-		t.Fatalf("expected model name 'User', got %q", m.Name)
+	model := file.Models[0]
+	if model.Name != "User" {
+		t.Fatalf("expected model name 'User', got %q", model.Name)
 	}
-	if len(m.Fields) != 2 {
-		t.Fatalf("expected 2 fields, got %d", len(m.Fields))
+	expectedFields := []struct {
+		name string
+		typ  string
+	}{
+		{"id", "Int"},
+		{"name", "String"},
 	}
-	if m.Fields[0].Name != "id" || m.Fields[0].Type.Name != "Int" {
-		t.Fatalf("unexpected first field: %#v", m.Fields[0])
+	if len(model.Fields) != len(expectedFields) {
+		t.Fatalf("expected %d fields, got %d", len(expectedFields), len(model.Fields))
 	}
-	if m.Fields[1].Name != "name" || m.Fields[1].Type.Name != "String" {
-		t.Fatalf("unexpected second field: %#v", m.Fields[1])
+	for i, ef := range expectedFields {
+		f := model.Fields[i]
+		if f.Name != ef.name || f.Type == nil || f.Type.Name != ef.typ {
+			t.Fatalf("expected field %q of type %q, got %#v", ef.name, ef.typ, f)
+		}
+
 	}
 }
