@@ -24,7 +24,6 @@ model User {
     id: Int
     name: String
 }
-`
 	file, err := ParseString(src)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -32,6 +31,7 @@ model User {
 	if len(file.Models) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(file.Models))
 	}
+
 	model := file.Models[0]
 	if model.Name != "User" {
 		t.Fatalf("expected model name 'User', got %q", model.Name)
@@ -51,5 +51,6 @@ model User {
 		if f.Name != ef.name || f.Type == nil || f.Type.Name != ef.typ {
 			t.Fatalf("expected field %q of type %q, got %#v", ef.name, ef.typ, f)
 		}
+
 	}
 }
