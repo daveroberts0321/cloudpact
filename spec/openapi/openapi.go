@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"cloudpact/parser/grammar"
+	"github.com/daveroberts0321/cloudpact/parser/grammar"
 )
 
 // APIConfig holds configuration for API generation

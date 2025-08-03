@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"cloudpact/parser/grammar"
-	"cloudpact/spec/openapi"
+	"github.com/daveroberts0321/cloudpact/parser/grammar"
+	"github.com/daveroberts0321/cloudpact/spec/openapi"
 
 	"github.com/fsnotify/fsnotify"
 )
