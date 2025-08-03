@@ -17,7 +17,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-//go:embed templates/*
+//go:embed templates/* templates/.gitignore templates/go.mod.tmpl
 var templates embed.FS
 
 // ProjectConfig holds the configuration for a CloudPact project
@@ -219,9 +219,9 @@ func initProject(name string) error {
 		"services/user_service.cp": "templates/user_service.cp",
 		"web/index.html":           "templates/index.html",
 		"web/main.ts":              "templates/main.ts",
-		"go.mod":                   "templates/go.mod",
+		"go.mod":                   "templates/go.mod.tmpl",
 		"README.md":                "templates/README.md",
-		".gitignore":               "templates/gitignore",
+		".gitignore":               "templates/.gitignore",
 	}
 
 	for filePath, templatePath := range templateFiles {
