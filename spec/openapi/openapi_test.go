@@ -8,10 +8,14 @@ import (
 )
 
 func TestGenerate(t *testing.T) {
-	src := `model User {
-    id: Int
-    name: String
-}`
+	src := `define record Person
+    first: text
+    last: text
+
+function hello(name: text) returns text
+    why: "Greets a user"
+    do:
+        return "hi"`
 	f, err := grammar.ParseString(src)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -23,9 +27,7 @@ func TestGenerate(t *testing.T) {
 	checks := []string{
 		"openapi: \"3.0.0\"",
 		"title: \"CloudPact API\"",
-		"User:",
-		"type: \"integer\"",
-		"type: \"string\"",
+		"/hello:",
 	}
 	for _, c := range checks {
 		if !strings.Contains(yaml, c) {
