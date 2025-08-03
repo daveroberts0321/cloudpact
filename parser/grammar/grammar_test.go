@@ -24,7 +24,6 @@ model User {
     id: Int
     name: String
 }
-`
 	file, err := ParseString(src)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -32,6 +31,7 @@ model User {
 	if len(file.Models) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(file.Models))
 	}
+
 	fields := file.Models[0].Fields
 	if len(fields) != 2 {
 		t.Fatalf("expected 2 fields, got %d", len(fields))
@@ -150,5 +150,6 @@ func TestParseIfStatementMissingThen(t *testing.T) {
 if x > 0 set y = 1`
 	if _, err := ParseString(src); err == nil {
 		t.Fatalf("expected parse error, got nil")
+
 	}
 }
