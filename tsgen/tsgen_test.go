@@ -14,6 +14,11 @@ info:
   version: "1.0.0"
 components:
   schemas:
+    Address:
+      type: object
+      properties:
+        street:
+          type: string
     User:
       type: object
       properties:
@@ -21,7 +26,17 @@ components:
           type: string
         age:
           type: integer
-      required: [id, age]
+        address:
+          $ref: '#/components/schemas/Address'
+        tags:
+          type: array
+          items:
+            type: string
+        addresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+      required: [id, age, address, tags, addresses]
 `
 	dir := t.TempDir()
 	specPath := filepath.Join(dir, "spec.yaml")
@@ -36,12 +51,25 @@ components:
 	if err := Generate(specPath); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	iface, err := os.ReadFile(filepath.Join(dir, "generated/ts/User.ts"))
+	userIface, err := os.ReadFile(filepath.Join(dir, "generated/ts/User.ts"))
 	if err != nil {
-		t.Fatalf("read interface: %v", err)
+		t.Fatalf("read user interface: %v", err)
 	}
-	if !strings.Contains(string(iface), "export interface User") {
-		t.Fatalf("interface not generated: %s", string(iface))
+	if !strings.Contains(string(userIface), "address: Address;") {
+		t.Fatalf("nested object not generated: %s", string(userIface))
+	}
+	if !strings.Contains(string(userIface), "tags: string[];") {
+		t.Fatalf("array of primitives not generated: %s", string(userIface))
+	}
+	if !strings.Contains(string(userIface), "addresses: Address[];") {
+		t.Fatalf("array of objects not generated: %s", string(userIface))
+	}
+	addrIface, err := os.ReadFile(filepath.Join(dir, "generated/ts/Address.ts"))
+	if err != nil {
+		t.Fatalf("read address interface: %v", err)
+	}
+	if !strings.Contains(string(addrIface), "export interface Address") {
+		t.Fatalf("address interface not generated: %s", string(addrIface))
 	}
 	client, err := os.ReadFile(filepath.Join(dir, "generated/ts/client.ts"))
 	if err != nil {
