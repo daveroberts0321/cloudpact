@@ -1,0 +1,4 @@
+# Build artifacts
+cloudpact.exe
+*.exe
+generated/
