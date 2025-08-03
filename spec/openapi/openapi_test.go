@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"cloudpact/parser/grammar"
+	"github.com/daveroberts0321/cloudpact/parser/grammar"
 )
 
 func TestGenerate(t *testing.T) {
@@ -22,7 +22,7 @@ func TestGenerate(t *testing.T) {
 	}
 	checks := []string{
 		"openapi: \"3.0.0\"",
-		"title: \"Cloudpact API\"",
+		"title: \"CloudPact API\"",
 		"User:",
 		"type: \"integer\"",
 		"type: \"string\"",
