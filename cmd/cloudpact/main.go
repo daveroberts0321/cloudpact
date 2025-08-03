@@ -10,6 +10,7 @@ import (
 	"github.com/daveroberts0321/cloudpact/watch"
 )
 
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -162,3 +163,4 @@ EXAMPLES:
     cloudpact ai review models/user.cp
     cloudpact gen openapi models/user.cp`)
 }
+

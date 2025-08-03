@@ -1,0 +1,14 @@
+name: {{.ProjectName}}
+version: 0.1.0
+go_module: {{.ModuleName}}
+port: 8080
+watch_paths:
+  - models
+  - services
+
+api:
+  title: {{.ProjectName}} API
+  version: 0.1.0
+  description: Generated API from CloudPact models
+  server_url: http://localhost:8080
+
