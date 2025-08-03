@@ -1,0 +1,6 @@
+# CloudPact project
+node_modules/
+dist/
+generated/
+cmd/ai-integration/cache/
+
