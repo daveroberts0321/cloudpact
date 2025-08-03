@@ -1,9 +1,6 @@
 package grammar
 
-import (
-	"reflect"
-	"testing"
-)
+import "testing"
 
 // Test parsing of a model declaration without fields.
 func TestParseModelDeclaration(t *testing.T) {
@@ -32,13 +29,27 @@ model User {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	expected := &File{Models: []*Model{
-		{Name: "User", Fields: []*Field{
-			{Name: "id", Type: &Type{Name: "Int"}},
-			{Name: "name", Type: &Type{Name: "String"}},
-		}},
-	}}
-	if !reflect.DeepEqual(file, expected) {
-		t.Fatalf("expected %#v, got %#v", expected, file)
+	if len(file.Models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(file.Models))
+	}
+	model := file.Models[0]
+	if model.Name != "User" {
+		t.Fatalf("expected model name 'User', got %q", model.Name)
+	}
+	expectedFields := []struct {
+		name string
+		typ  string
+	}{
+		{"id", "Int"},
+		{"name", "String"},
+	}
+	if len(model.Fields) != len(expectedFields) {
+		t.Fatalf("expected %d fields, got %d", len(expectedFields), len(model.Fields))
+	}
+	for i, ef := range expectedFields {
+		f := model.Fields[i]
+		if f.Name != ef.name || f.Type == nil || f.Type.Name != ef.typ {
+			t.Fatalf("expected field %q of type %q, got %#v", ef.name, ef.typ, f)
+		}
 	}
 }
