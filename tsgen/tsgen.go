@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v2"
 )
 
 // Generate reads an OpenAPI spec in YAML format and emits TypeScript
@@ -37,69 +39,52 @@ func Generate(specPath string) error {
 	return writeClient(names)
 }
 
-// parseSchemas extracts schema definitions from the limited OpenAPI YAML.
-func parseSchemas(yaml string) (map[string]map[string]string, error) {
-	lines := strings.Split(yaml, "\n")
-	schemas := map[string]map[string]string{}
-	state := 0
-	var currentModel string
-	var currentField string
-	inProperties := false
-	for _, line := range lines {
-		line = strings.TrimRight(line, " ")
-		switch state {
-		case 0:
-			if strings.HasPrefix(line, "components:") {
-				state = 1
-			}
-		case 1:
-			if strings.HasPrefix(line, "  schemas:") {
-				state = 2
-			}
-		case 2:
-			// look for model declarations at indent 4
-			if strings.HasPrefix(line, "    ") && !strings.HasPrefix(line, "      ") {
-				trimmed := strings.TrimSpace(line)
-				if strings.HasSuffix(trimmed, ":") {
-					currentModel = strings.TrimSuffix(trimmed, ":")
-					schemas[currentModel] = map[string]string{}
-					inProperties = false
-					currentField = ""
-					continue
-				}
-			}
-			if currentModel == "" {
-				continue
-			}
-			if !inProperties {
-				if strings.HasPrefix(line, "      properties:") {
-					inProperties = true
-				}
-				continue
-			}
-			// inside properties
-			if strings.HasPrefix(line, "        ") && !strings.HasPrefix(line, "          ") {
-				trimmed := strings.TrimSpace(line)
-				if strings.HasSuffix(trimmed, ":") {
-					currentField = strings.TrimSuffix(trimmed, ":")
-					continue
-				}
-			}
-			if currentField != "" && strings.Contains(line, "type:") {
-				t := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "type:"))
-				t = strings.Trim(t, "\"")
-				schemas[currentModel][currentField] = t
-				currentField = ""
-				continue
-			}
-			// leaving properties block
-			if strings.HasPrefix(line, "    ") && !strings.HasPrefix(line, "      ") {
-				inProperties = false
-				currentField = ""
-			}
-		}
+// parseSchemas extracts schema definitions from the OpenAPI YAML using a YAML parser.
+func parseSchemas(data string) (map[string]map[string]string, error) {
+	var doc struct {
+		Components struct {
+			Schemas map[string]*schema `yaml:"schemas"`
+		} `yaml:"components"`
 	}
-	return schemas, nil
+
+	if err := yaml.Unmarshal([]byte(data), &doc); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]map[string]string)
+	for name, s := range doc.Components.Schemas {
+		fields := make(map[string]string)
+		for fname, f := range s.Properties {
+			fields[fname] = resolveType(f)
+		}
+		result[name] = fields
+	}
+	return result, nil
+}
+
+type schema struct {
+	Type       string             `yaml:"type"`
+	Ref        string             `yaml:"$ref"`
+	Properties map[string]*schema `yaml:"properties"`
+	Items      *schema            `yaml:"items"`
+}
+
+func resolveType(s *schema) string {
+	if s == nil {
+		return "any"
+	}
+	if s.Ref != "" {
+		parts := strings.Split(s.Ref, "/")
+		return parts[len(parts)-1]
+	}
+	switch s.Type {
+	case "array":
+		return resolveType(s.Items) + "[]"
+	case "object":
+		return "object"
+	default:
+		return s.Type
+	}
 }
 
 func writeInterface(name string, fields map[string]string) error {
@@ -137,12 +122,19 @@ func writeClient(names []string) error {
 }
 
 func mapType(t string) string {
+	if strings.HasSuffix(t, "[]") {
+		return mapType(strings.TrimSuffix(t, "[]")) + "[]"
+	}
 	switch t {
 	case "integer", "number":
 		return "number"
 	case "boolean":
 		return "boolean"
-	default:
+	case "string":
 		return "string"
+	case "object", "any":
+		return "any"
+	default:
+		return t
 	}
 }

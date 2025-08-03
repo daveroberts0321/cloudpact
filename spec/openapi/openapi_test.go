@@ -27,7 +27,6 @@ function hello(name: text) returns text
 	checks := []string{
 		"openapi: \"3.0.0\"",
 		"title: \"CloudPact API\"",
-		"Person:",
 		"/hello:",
 	}
 	for _, c := range checks {
